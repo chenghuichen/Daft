@@ -59,6 +59,13 @@ pub fn extract_agg_expr(expr: &ExprRef) -> DaftResult<AggExpr> {
                         .map(|input| input.alias(name.clone()))
                         .collect(),
                 },
+                AggExpr::ExtensionAgg { handle, inputs } => AggExpr::ExtensionAgg {
+                    handle,
+                    inputs: inputs
+                        .into_iter()
+                        .map(|input| input.alias(name.clone()))
+                        .collect(),
+                },
             }
         }),
         _ => Err(DaftError::InternalError(format!(

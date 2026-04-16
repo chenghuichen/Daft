@@ -260,13 +260,16 @@ impl GroupedAggregateSink {
                 group_by,
             )?;
 
-        // MapGroups aggregations cannot be decomposed into partial / final stages and
-        // must see the full group in a single pass. Detect this case so that we force
-        // a partition-only strategy and run the original aggregations during the
+        // MapGroups and ExtensionAgg cannot be decomposed into partial / final stages
+        // and must see the full group in a single pass. Detect this case so that we
+        // force a partition-only strategy and run the original aggregations during the
         // final aggregation step.
-        let has_map_groups = aggregations
-            .iter()
-            .any(|agg| matches!(agg.as_ref(), daft_dsl::AggExpr::MapGroups { .. }));
+        let has_map_groups = aggregations.iter().any(|agg| {
+            matches!(
+                agg.as_ref(),
+                daft_dsl::AggExpr::MapGroups { .. } | daft_dsl::AggExpr::ExtensionAgg { .. }
+            )
+        });
 
         let final_group_by = if !partial_agg_exprs.is_empty() {
             group_by

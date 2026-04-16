@@ -1,4 +1,5 @@
 pub mod agg;
+pub mod ext_agg;
 pub mod function_args;
 #[cfg(test)]
 mod macro_tests;
@@ -19,6 +20,7 @@ use std::{
 
 use common_error::DaftResult;
 use daft_core::prelude::*;
+pub use ext_agg::{ExtAggHandle, ExtAggUDF};
 pub use function_args::{FunctionArg, FunctionArgs, UnaryArg};
 use python::LegacyPythonUDF;
 use scalar::DynamicScalarFunction;

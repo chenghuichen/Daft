@@ -7,7 +7,8 @@ use std::{
 use common_error::{DaftError, DaftResult};
 use daft_ai::provider::ProviderRef;
 use daft_catalog::{Bindings, CatalogRef, Identifier, LookupMode, TableRef, TableSource, View};
-use daft_ext::abi::{FFI_ScalarFunction, FFI_SessionContext};
+use daft_dsl::functions::ExtAggHandle;
+use daft_ext::abi::{FFI_AggFunction, FFI_ScalarFunction, FFI_SessionContext};
 use daft_ext_internal::module::ModuleHandle;
 use uuid::Uuid;
 
@@ -42,6 +43,8 @@ struct SessionState {
     tables: Bindings<TableRef>,
     /// Session-scoped functions (Python UDFs and native extension functions).
     functions: Bindings<ScalarFunction>,
+    /// Session-scoped aggregate functions (native extension agg functions).
+    agg_functions: Bindings<ExtAggHandle>,
 }
 
 // TODO: Session should just use a Result not CatalogResult.
@@ -79,6 +82,7 @@ impl Session {
             providers: Bindings::empty(),
             tables: Bindings::empty(),
             functions: Bindings::empty(),
+            agg_functions: Bindings::empty(),
         };
         let state = RwLock::new(state);
         let state = Arc::new(state);
@@ -116,6 +120,32 @@ impl Session {
         self.state_mut()
             .functions
             .bind(name.into(), function.into());
+    }
+
+    /// Attaches a native extension aggregate function to this session.
+    pub fn attach_agg_function(&self, name: impl Into<String>, handle: ExtAggHandle) {
+        self.state_mut().agg_functions.bind(name.into(), handle);
+    }
+
+    /// Returns a registered aggregate function handle by name, or an error.
+    pub fn get_agg_function(&self, name: &str) -> CatalogResult<ExtAggHandle> {
+        let ident = Identifier::simple(name);
+        match self
+            .state()
+            .agg_functions
+            .lookup(name, LookupMode::Insensitive)
+        {
+            handles if handles.is_empty() => {
+                obj_not_found_err!("Agg function", &ident)
+            }
+            handles if handles.len() == 1 => Ok(handles[0].clone()),
+            handles => {
+                ambiguous_identifier_err!(
+                    "Agg function",
+                    handles.iter().map(|h| h.name().to_string())
+                )
+            }
+        }
     }
 
     /// Attaches a provider to this session, err if already exists.
@@ -462,6 +492,24 @@ impl Session {
             0
         }
 
+        unsafe extern "C" fn define_agg_function_cb(
+            ctx: *mut c_void,
+            ffi: FFI_AggFunction,
+        ) -> c_int {
+            let init_ctx = unsafe { &*(ctx as *const InitCtx) };
+            let name_ptr = unsafe { (ffi.name)(ffi.ctx) };
+            let name = unsafe { CStr::from_ptr(name_ptr) }
+                .to_str()
+                .unwrap_or("unknown")
+                .to_string();
+            let udf =
+                daft_ext_internal::agg_function::into_agg_function_handle(ffi, init_ctx.module.clone());
+            let handle = ExtAggHandle::new(udf);
+            let session = unsafe { &*init_ctx.session };
+            session.attach_agg_function(name, handle);
+            0
+        }
+
         let init_ctx = InitCtx {
             session: std::ptr::from_ref::<Self>(self),
             module: module.clone(),
@@ -470,6 +518,7 @@ impl Session {
         let mut ffi_ctx = FFI_SessionContext {
             ctx: (&raw const init_ctx) as *mut c_void,
             define_function: define_function_cb,
+            define_agg_function: define_agg_function_cb,
         };
 
         let rc = unsafe { (module.ffi_module().init)(&raw mut ffi_ctx) };

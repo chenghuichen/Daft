@@ -1,11 +1,16 @@
 use crate::{
     abi::FFI_SessionContext,
+    agg_function::{DaftAggFunctionRef, agg_into_ffi},
     function::{DaftScalarFunctionRef, into_ffi},
 };
 
 /// Trait for installing an extension within a session.
 pub trait DaftSession {
+    /// Register a scalar function with the host session.
     fn define_function(&mut self, function: DaftScalarFunctionRef);
+
+    /// Register an aggregate function with the host session.
+    fn define_agg_function(&mut self, function: DaftAggFunctionRef);
 }
 
 /// Trait implemented by extension crates to install themselves.
@@ -32,6 +37,12 @@ impl DaftSession for SessionContext<'_> {
         let vtable = into_ffi(func);
         let rc = unsafe { (self.session.define_function)(self.session.ctx, vtable) };
         assert_eq!(rc, 0, "host define_function returned non-zero: {rc}");
+    }
+
+    fn define_agg_function(&mut self, func: DaftAggFunctionRef) {
+        let vtable = agg_into_ffi(func);
+        let rc = unsafe { (self.session.define_agg_function)(self.session.ctx, vtable) };
+        assert_eq!(rc, 0, "host define_agg_function returned non-zero: {rc}");
     }
 }
 
@@ -83,9 +94,16 @@ mod tests {
             0
         }
 
+        unsafe extern "C" fn stub_define_agg(
+            _ctx: *mut c_void,
+            _func: crate::abi::FFI_AggFunction,
+        ) -> c_int {
+            0
+        }
         let mut raw_session = FFI_SessionContext {
             ctx: std::ptr::null_mut(),
             define_function: mock_define,
+            define_agg_function: stub_define_agg,
         };
 
         let mut session = SessionContext::new(&mut raw_session);
@@ -130,9 +148,16 @@ mod tests {
             0
         }
 
+        unsafe extern "C" fn stub_define_agg(
+            _ctx: *mut c_void,
+            _func: crate::abi::FFI_AggFunction,
+        ) -> c_int {
+            0
+        }
         let mut raw_session = FFI_SessionContext {
             ctx: std::ptr::null_mut(),
             define_function: mock_define,
+            define_agg_function: stub_define_agg,
         };
 
         let mut session = SessionContext::new(&mut raw_session);

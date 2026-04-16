@@ -37,8 +37,8 @@ use super::functions::FunctionExpr;
 use crate::{
     expr::bound_expr::BoundExpr,
     functions::{
-        BuiltinScalarFn, FUNCTION_REGISTRY, FunctionArg, FunctionArgs, FunctionEvaluator,
-        function_display_without_formatter, function_semantic_id,
+        BuiltinScalarFn, ExtAggHandle, FUNCTION_REGISTRY, FunctionArg, FunctionArgs,
+        FunctionEvaluator, function_display_without_formatter, function_semantic_id,
         python::{LegacyPythonUDF, RuntimePyObject},
         scalar::{ScalarFn, scalar_function_semantic_id},
         sketch::{HashableVecPercentiles, SketchExpr},
@@ -457,6 +457,12 @@ pub enum AggExpr {
         func: MapGroupsFn,
         inputs: Vec<ExprRef>,
     },
+
+    #[display("{handle}({})", inputs.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "))]
+    ExtensionAgg {
+        handle: ExtAggHandle,
+        inputs: Vec<ExprRef>,
+    },
 }
 
 #[derive(Display, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -557,6 +563,7 @@ impl AggExpr {
             Self::Concat(_, _) => "Concat",
             Self::Skew(_) => "Skew",
             Self::MapGroups { .. } => "Map Groups",
+            Self::ExtensionAgg { .. } => "Extension Agg",
         }
     }
 
@@ -583,6 +590,7 @@ impl AggExpr {
             | Self::Concat(expr, _)
             | Self::Skew(expr) => expr.name(),
             Self::MapGroups { func: _, inputs } => inputs.first().unwrap().name(),
+            Self::ExtensionAgg { handle, .. } => handle.name(),
         }
     }
 
@@ -682,6 +690,14 @@ impl AggExpr {
                 FieldID::new(format!("{child_id}.local_skew()"))
             }
             Self::MapGroups { func, inputs } => func.semantic_id(inputs, schema),
+            Self::ExtensionAgg { handle, inputs } => {
+                let inputs_str = inputs
+                    .iter()
+                    .map(|e| e.semantic_id(schema).id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                FieldID::new(format!("ExtensionAgg_{}({inputs_str})", handle.name()))
+            }
         }
     }
 
@@ -708,11 +724,12 @@ impl AggExpr {
             | Self::Concat(expr, _)
             | Self::Skew(expr) => vec![expr.clone()],
             Self::MapGroups { func: _, inputs } => inputs.clone(),
+            Self::ExtensionAgg { inputs, .. } => inputs.clone(),
         }
     }
 
     pub fn with_new_children(&self, mut children: Vec<ExprRef>) -> Self {
-        if let Self::MapGroups { func: _, inputs } = &self {
+        if let Self::MapGroups { func: _, inputs } | Self::ExtensionAgg { inputs, .. } = &self {
             assert_eq!(children.len(), inputs.len());
         } else {
             assert_eq!(children.len(), 1);
@@ -737,6 +754,10 @@ impl AggExpr {
             Self::Skew(_) => Self::Skew(first_child()),
             Self::MapGroups { func, inputs: _ } => Self::MapGroups {
                 func: func.with_new_children(children.clone()),
+                inputs: children,
+            },
+            Self::ExtensionAgg { handle, inputs: _ } => Self::ExtensionAgg {
+                handle: handle.clone(),
                 inputs: children,
             },
             Self::ApproxPercentile(ApproxPercentileParams {
@@ -905,6 +926,13 @@ impl AggExpr {
             }
 
             Self::MapGroups { func, inputs } => func.to_field(inputs.as_slice(), schema),
+            Self::ExtensionAgg { handle, inputs } => {
+                let input_fields: Vec<Field> = inputs
+                    .iter()
+                    .map(|e| e.to_field(schema))
+                    .collect::<DaftResult<_>>()?;
+                handle.get_return_field(&input_fields, schema)
+            }
         }
     }
 }

@@ -720,6 +720,13 @@ impl RecordBatch {
             AggExpr::MapGroups { .. } => Err(DaftError::ValueError(
                 "MapGroups not supported via aggregation, use map_groups instead".to_string(),
             )),
+            AggExpr::ExtensionAgg { handle, inputs } => {
+                let evaled_inputs: Vec<Series> = inputs
+                    .iter()
+                    .map(|e| self.eval_agg_child(e))
+                    .collect::<DaftResult<_>>()?;
+                handle.call_agg(evaled_inputs, groups)
+            }
         }
     }
 
