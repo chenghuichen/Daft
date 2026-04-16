@@ -335,10 +335,10 @@ pub fn populate_aggregation_stages_bound_with_schema(
                 // will call `agg()` with the original MapGroups expression when
                 // `partial_agg_exprs` is empty.
             }
-            AggExpr::ExtensionAgg { .. } => {
-                // ExtensionAgg functions are run in a single pass (like MapGroups).
+            AggExpr::AggFn { .. } => {
+                // AggFn functions are run in a single pass (like MapGroups).
                 // The grouped aggregate sink will call `agg()` with the original
-                // ExtensionAgg expression when `partial_agg_exprs` is empty.
+                // AggFn expression when `partial_agg_exprs` is empty.
             }
             // Only necessary for Flotilla
             AggExpr::ApproxSketch(expr, sketch_type) => {

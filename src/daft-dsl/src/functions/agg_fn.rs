@@ -20,21 +20,21 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 ///    evaluation. Implementations create one accumulator per group internally
 ///    (or one accumulator for the ungrouped case).
 #[typetag::serde(tag = "type")]
-pub trait ExtAggUDF: Send + Sync {
+pub trait AggFn: Send + Sync {
     fn name(&self) -> &str;
     fn get_return_field(&self, inputs: &[Field], schema: &Schema) -> DaftResult<Field>;
     fn call_agg(&self, inputs: Vec<Series>, groups: Option<&GroupIndices>) -> DaftResult<Series>;
 }
 
-/// A cloneable, hashable (by name) wrapper around `Arc<dyn ExtAggUDF>`.
+/// A cloneable, hashable (by name) wrapper around `Arc<dyn AggFn>`.
 ///
 /// `Hash` and `PartialEq` compare by function name only, matching the
 /// expression-identity semantics used elsewhere in the planner.
 #[derive(Clone)]
-pub struct ExtAggHandle(pub Arc<dyn ExtAggUDF>);
+pub struct AggFnHandle(pub Arc<dyn AggFn>);
 
-impl ExtAggHandle {
-    pub fn new(udf: Arc<dyn ExtAggUDF>) -> Self {
+impl AggFnHandle {
+    pub fn new(udf: Arc<dyn AggFn>) -> Self {
         Self(udf)
     }
 
@@ -55,41 +55,41 @@ impl ExtAggHandle {
     }
 }
 
-impl Hash for ExtAggHandle {
+impl Hash for AggFnHandle {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.name().hash(state);
     }
 }
 
-impl PartialEq for ExtAggHandle {
+impl PartialEq for AggFnHandle {
     fn eq(&self, other: &Self) -> bool {
         self.0.name() == other.0.name()
     }
 }
 
-impl Eq for ExtAggHandle {}
+impl Eq for AggFnHandle {}
 
-impl std::fmt::Debug for ExtAggHandle {
+impl std::fmt::Debug for AggFnHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ExtAggHandle({})", self.0.name())
+        write!(f, "AggFnHandle({})", self.0.name())
     }
 }
 
-impl std::fmt::Display for ExtAggHandle {
+impl std::fmt::Display for AggFnHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.name())
     }
 }
 
-impl Serialize for ExtAggHandle {
+impl Serialize for AggFnHandle {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.0.serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for ExtAggHandle {
+impl<'de> Deserialize<'de> for AggFnHandle {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let udf = <Box<dyn ExtAggUDF>>::deserialize(deserializer)?;
+        let udf = <Box<dyn AggFn>>::deserialize(deserializer)?;
         Ok(Self(Arc::from(udf)))
     }
 }

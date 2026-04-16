@@ -267,7 +267,7 @@ impl GroupedAggregateSink {
         let has_map_groups = aggregations.iter().any(|agg| {
             matches!(
                 agg.as_ref(),
-                daft_dsl::AggExpr::MapGroups { .. } | daft_dsl::AggExpr::ExtensionAgg { .. }
+                daft_dsl::AggExpr::MapGroups { .. } | daft_dsl::AggExpr::AggFn { .. }
             )
         });
 

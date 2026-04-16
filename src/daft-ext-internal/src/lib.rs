@@ -1,3 +1,3 @@
-pub mod agg_function;
+pub mod agg_fn;
 pub mod function;
 pub mod module;

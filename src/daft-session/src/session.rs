@@ -7,7 +7,7 @@ use std::{
 use common_error::{DaftError, DaftResult};
 use daft_ai::provider::ProviderRef;
 use daft_catalog::{Bindings, CatalogRef, Identifier, LookupMode, TableRef, TableSource, View};
-use daft_dsl::functions::ExtAggHandle;
+use daft_dsl::functions::AggFnHandle;
 use daft_ext::abi::{FFI_AggFunction, FFI_ScalarFunction, FFI_SessionContext};
 use daft_ext_internal::module::ModuleHandle;
 use uuid::Uuid;
@@ -44,7 +44,7 @@ struct SessionState {
     /// Session-scoped functions (Python UDFs and native extension functions).
     functions: Bindings<ScalarFunction>,
     /// Session-scoped aggregate functions (native extension agg functions).
-    agg_functions: Bindings<ExtAggHandle>,
+    agg_functions: Bindings<AggFnHandle>,
 }
 
 // TODO: Session should just use a Result not CatalogResult.
@@ -123,12 +123,12 @@ impl Session {
     }
 
     /// Attaches a native extension aggregate function to this session.
-    pub fn attach_agg_function(&self, name: impl Into<String>, handle: ExtAggHandle) {
+    pub fn attach_agg_function(&self, name: impl Into<String>, handle: AggFnHandle) {
         self.state_mut().agg_functions.bind(name.into(), handle);
     }
 
     /// Returns a registered aggregate function handle by name, or an error.
-    pub fn get_agg_function(&self, name: &str) -> CatalogResult<ExtAggHandle> {
+    pub fn get_agg_function(&self, name: &str) -> CatalogResult<AggFnHandle> {
         let ident = Identifier::simple(name);
         match self
             .state()
@@ -503,8 +503,8 @@ impl Session {
                 .unwrap_or("unknown")
                 .to_string();
             let udf =
-                daft_ext_internal::agg_function::into_agg_function_handle(ffi, init_ctx.module.clone());
-            let handle = ExtAggHandle::new(udf);
+                daft_ext_internal::agg_fn::into_agg_fn_handle(ffi, init_ctx.module.clone());
+            let handle = AggFnHandle::new(udf);
             let session = unsafe { &*init_ctx.session };
             session.attach_agg_function(name, handle);
             0

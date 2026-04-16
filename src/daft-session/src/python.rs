@@ -240,7 +240,7 @@ impl PySession {
             .collect::<PyResult<_>>()?;
 
         let expr: daft_dsl::ExprRef =
-            std::sync::Arc::new(Expr::Agg(AggExpr::ExtensionAgg { handle, inputs }));
+            std::sync::Arc::new(Expr::Agg(AggExpr::AggFn { handle, inputs }));
         Ok(expr.into())
     }
 }

@@ -8,7 +8,7 @@ use daft_core::{
     array::ops::GroupIndices,
     prelude::{Field, Schema, Series, UInt64Array},
 };
-use daft_dsl::functions::ExtAggUDF;
+use daft_dsl::functions::AggFn;
 use daft_ext::abi::{ArrowArray, ArrowSchema, FFI_AggFunction};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -52,16 +52,16 @@ impl Drop for AggInner {
 unsafe impl Send for AggInner {}
 unsafe impl Sync for AggInner {}
 
-/// Host-side wrapper for `FFI_AggFunction`, implementing [`ExtAggUDF`].
+/// Host-side wrapper for `FFI_AggFunction`, implementing [`AggFn`].
 ///
 /// This is the type that the session registry stores and that
 /// `AggExpr::ExtensionAgg` carries inside an [`ExtAggHandle`].
-pub struct AggFunctionHandle {
+pub struct AggFnHandle {
     name: &'static str,
     inner: Option<Arc<AggInner>>,
 }
 
-impl AggFunctionHandle {
+impl AggFnHandle {
     pub fn new(ffi: FFI_AggFunction, module: Arc<ModuleHandle>) -> Self {
         let name_ptr = unsafe { (ffi.name)(ffi.ctx) };
         let name: &'static str = Box::leak(
@@ -165,8 +165,8 @@ fn run_one_group(
     Ok(arrow_array::make_array(arrow_data))
 }
 
-#[typetag::serde(name = "AggFunctionHandle")]
-impl ExtAggUDF for AggFunctionHandle {
+#[typetag::serde(name = "AggFnHandle")]
+impl AggFn for AggFnHandle {
     fn name(&self) -> &str {
         self.name
     }
@@ -241,16 +241,16 @@ impl ExtAggUDF for AggFunctionHandle {
     }
 }
 
-impl Serialize for AggFunctionHandle {
+impl Serialize for AggFnHandle {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut s = serializer.serialize_struct("AggFunctionHandle", 1)?;
+        let mut s = serializer.serialize_struct("AggFnHandle", 1)?;
         s.serialize_field("name", self.name)?;
         s.end()
     }
 }
 
-impl<'de> Deserialize<'de> for AggFunctionHandle {
+impl<'de> Deserialize<'de> for AggFnHandle {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         struct Helper {
@@ -264,11 +264,11 @@ impl<'de> Deserialize<'de> for AggFunctionHandle {
     }
 }
 
-/// Create an [`ExtAggUDF`]-implementing [`AggFunctionHandle`] from an
+/// Create an [`AggFn`]-implementing [`AggFnHandle`] from an
 /// `FFI_AggFunction` vtable.  Called during extension initialization.
-pub fn into_agg_function_handle(
+pub fn into_agg_fn_handle(
     ffi: FFI_AggFunction,
     module: Arc<ModuleHandle>,
-) -> Arc<dyn ExtAggUDF> {
-    Arc::new(AggFunctionHandle::new(ffi, module))
+) -> Arc<dyn AggFn> {
+    Arc::new(AggFnHandle::new(ffi, module))
 }

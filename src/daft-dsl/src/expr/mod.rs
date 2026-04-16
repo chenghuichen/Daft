@@ -37,7 +37,7 @@ use super::functions::FunctionExpr;
 use crate::{
     expr::bound_expr::BoundExpr,
     functions::{
-        BuiltinScalarFn, ExtAggHandle, FUNCTION_REGISTRY, FunctionArg, FunctionArgs,
+        BuiltinScalarFn, AggFnHandle, FUNCTION_REGISTRY, FunctionArg, FunctionArgs,
         FunctionEvaluator, function_display_without_formatter, function_semantic_id,
         python::{LegacyPythonUDF, RuntimePyObject},
         scalar::{ScalarFn, scalar_function_semantic_id},
@@ -459,8 +459,8 @@ pub enum AggExpr {
     },
 
     #[display("{handle}({})", inputs.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "))]
-    ExtensionAgg {
-        handle: ExtAggHandle,
+    AggFn {
+        handle: AggFnHandle,
         inputs: Vec<ExprRef>,
     },
 }
@@ -563,7 +563,7 @@ impl AggExpr {
             Self::Concat(_, _) => "Concat",
             Self::Skew(_) => "Skew",
             Self::MapGroups { .. } => "Map Groups",
-            Self::ExtensionAgg { .. } => "Extension Agg",
+            Self::AggFn { .. } => "Extension Agg",
         }
     }
 
@@ -590,7 +590,7 @@ impl AggExpr {
             | Self::Concat(expr, _)
             | Self::Skew(expr) => expr.name(),
             Self::MapGroups { func: _, inputs } => inputs.first().unwrap().name(),
-            Self::ExtensionAgg { handle, .. } => handle.name(),
+            Self::AggFn { handle, .. } => handle.name(),
         }
     }
 
@@ -690,13 +690,13 @@ impl AggExpr {
                 FieldID::new(format!("{child_id}.local_skew()"))
             }
             Self::MapGroups { func, inputs } => func.semantic_id(inputs, schema),
-            Self::ExtensionAgg { handle, inputs } => {
+            Self::AggFn { handle, inputs } => {
                 let inputs_str = inputs
                     .iter()
                     .map(|e| e.semantic_id(schema).id.to_string())
                     .collect::<Vec<_>>()
                     .join(", ");
-                FieldID::new(format!("ExtensionAgg_{}({inputs_str})", handle.name()))
+                FieldID::new(format!("AggFn_{}({inputs_str})", handle.name()))
             }
         }
     }
@@ -724,12 +724,12 @@ impl AggExpr {
             | Self::Concat(expr, _)
             | Self::Skew(expr) => vec![expr.clone()],
             Self::MapGroups { func: _, inputs } => inputs.clone(),
-            Self::ExtensionAgg { inputs, .. } => inputs.clone(),
+            Self::AggFn { inputs, .. } => inputs.clone(),
         }
     }
 
     pub fn with_new_children(&self, mut children: Vec<ExprRef>) -> Self {
-        if let Self::MapGroups { func: _, inputs } | Self::ExtensionAgg { inputs, .. } = &self {
+        if let Self::MapGroups { func: _, inputs } | Self::AggFn { inputs, .. } = &self {
             assert_eq!(children.len(), inputs.len());
         } else {
             assert_eq!(children.len(), 1);
@@ -756,7 +756,7 @@ impl AggExpr {
                 func: func.with_new_children(children.clone()),
                 inputs: children,
             },
-            Self::ExtensionAgg { handle, inputs: _ } => Self::ExtensionAgg {
+            Self::AggFn { handle, inputs: _ } => Self::AggFn {
                 handle: handle.clone(),
                 inputs: children,
             },
@@ -926,7 +926,7 @@ impl AggExpr {
             }
 
             Self::MapGroups { func, inputs } => func.to_field(inputs.as_slice(), schema),
-            Self::ExtensionAgg { handle, inputs } => {
+            Self::AggFn { handle, inputs } => {
                 let input_fields: Vec<Field> = inputs
                     .iter()
                     .map(|e| e.to_field(schema))

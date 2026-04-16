@@ -674,15 +674,15 @@ fn replace_column_with_semantic_id_aggexpr(
                 })
             }
         }
-        AggExpr::ExtensionAgg { handle, inputs } => {
+        AggExpr::AggFn { handle, inputs } => {
             let transforms = inputs
                 .iter()
                 .map(|e| replace_column_with_semantic_id(e.clone(), subexprs_to_replace, schema))
                 .collect::<Vec<_>>();
             if transforms.iter().all(|e| !e.transformed) {
-                Transformed::no(AggExpr::ExtensionAgg { handle, inputs })
+                Transformed::no(AggExpr::AggFn { handle, inputs })
             } else {
-                Transformed::yes(AggExpr::ExtensionAgg {
+                Transformed::yes(AggExpr::AggFn {
                     handle,
                     inputs: transforms.iter().map(|t| t.data.clone()).collect(),
                 })
