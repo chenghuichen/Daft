@@ -90,6 +90,9 @@ def read_parquet(
     )
     storage_config = StorageConfig(multithreaded_io, io_config)
 
+    if checkpoint is not None and file_path_column is None:
+        file_path_column = "__daft_file_id__"
+
     builder = get_tabular_files_scan(
         path=path,
         infer_schema=infer_schema,
@@ -101,8 +104,7 @@ def read_parquet(
     )
 
     # Attach checkpoint config to the source node for progress tracking.
-    if checkpoint is not None and on is not None:
-        # Checkpoint filtering requires the Ray runner.
+    if checkpoint is not None:
         runner_type = runners.get_or_infer_runner_type()
         if runner_type == "native":
             raise ValueError(
@@ -111,9 +113,8 @@ def read_parquet(
                 "Use the Ray runner: call daft.context.set_runner_ray() "
                 "or set DAFT_RUNNER=ray."
             )
-        builder = builder.with_checkpoint(checkpoint.config, on)
-    elif checkpoint is not None:
-        raise ValueError("checkpoint= requires on= (the key column name)")
+        key_column = on if on is not None else file_path_column
+        builder = builder.with_checkpoint(checkpoint.config, key_column)
     elif on is not None:
         raise ValueError("on= requires checkpoint= (a CheckpointStore)")
 
